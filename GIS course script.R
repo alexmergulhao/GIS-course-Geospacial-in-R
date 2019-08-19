@@ -5,6 +5,9 @@ getwd()
 setwd("/Users/Alexandre Mergulh?o/Documents/R/GIS course - Geospacial in R")
 # needs / instead of \ and to begin w an /
 
+# ..........................................#
+#               FIRST LESSON                #
+# ..........................................#
 # 1st LESSON ----
 
 # installing packages ----
@@ -295,10 +298,12 @@ saveRDS(simp_sf, "simp_sf.rds") #command to save a single R object
 
 
 
+# .....................................................#
+# SECOND LESSON - Static (and partially spacial) Maps  #
+# .....................................................#
 
 
-
-# 2nd LESSON ----
+# 2nd LESSON (STATIC) ----
 
 # Useful resources for mapping and plotting:
   # Data Visualization: A practical introduction by Kieran Healy:
@@ -313,8 +318,14 @@ saveRDS(simp_sf, "simp_sf.rds") #command to save a single R object
     
     # Just maps: "Making Maps with R" chapter of the previously-mentioned Geocomputation with R
     # Just maps: [Tutorial] Bhaskar V. Karambelkar’s tutorial at useR 2017 on "Geospatial Data Visualization in R"
-
-# Static Maps     ----
+   
+    
+    
+    # ..........................................#
+    #               Static Maps                 #
+    # ..........................................#    
+    
+# Static Maps     
 # BEST packages for static maps: tmap(), ggplot2(), cartography
 # sf()  also has a plot() fuction has we've seen bfr
     simp_sf <- readRDS("simp_sf.rds")
@@ -332,6 +343,7 @@ install.packages("tmap")
 
 # tmap_tricks()
 
+# full india ----
 simp_sf %>% 
   filter(!state_ut %in% c("Andaman & Nicobar Islands", "Lakshadweep")) %>% 
   tm_shape() +
@@ -368,6 +380,7 @@ simp_sf %>%
 summary(simp_sf$gdp_density_usd_km2)    
 help("summary")
     
+# 2 lado a lado ----
 # versão de simp_sf mas sem obs com Union Territory
 states_Sf <- simp_sf %>%
           filter(!type == "Union Territory")
@@ -399,7 +412,7 @@ density <- tm_shape(states_Sf) +
  
   
   
-# inset maps: "zoom in background"
+# inset maps: "zoom in background" ----
   # create primary map
 ne_sex <- simp_sf %>% 
     filter(region == "Northeastern") %>%
@@ -413,9 +426,7 @@ ne_sex <- simp_sf %>%
       main.title.position = c("center"),
       main.title.size = 1,
           ) 
-  
-
-  # create secondary map - smaller inset map (with total india)
+    # create secondary map - smaller inset map (with total india)
 # put it in regions = sum of sub-comp that are the districts
 regional_sf <- simp_sf %>%
   group_by(region) %>%
@@ -427,7 +438,7 @@ inset <- regional_sf %>%
          !region == "Bay of Bengal") %>%
     mutate(northeast = ifelse(region == "Northeast", TRUE, FALSE)) %>%
   tm_shape() +
-  tm_fill(col = "northeast", palette = c("gray", "red")) + 
+  tm_fill(col = "northeast", palette = c("grey", "red")) + # could not make the region red...
   tm_style("cobalt") +
   tm_legend(show = FALSE)
 
@@ -436,7 +447,328 @@ library(grid)
 ne_sex # show primary map (region)
 print(inset, vp = viewport(0.28, 0.18, width = 0.2, height = 0.4)) # and then print on top of it, this inset map
   
-# could get the region red in inset map...
+# ERROR: could get the region red in inset map...
 
 
+
+
+# Facet Maps ----
+  # (progression over time, diff regions, etc.)
+    # The ----free.coords---- argument of tm_facets() controls whether to show only the faceted map area 
+    # or instead highlight the facet’s place in the original map.
+  # also needed log trans bcs Deli and Goa are outliers in gdp per capita
+
+# create custom labels for log scale
+gdp_seq <- 10 ^ (seq(2.8, 4.0, by = 0.2)) # gen a sequence of numbers
+gdp_vec <- scales::dollar(round(gdp_seq)) # put a dollar sign before and decimal notation
+
+my_labels = vector(mode = "character", length = 6) # gen var that has the rows as characters for legend (6 counting w $ and ,)
+for (i in seq_along(1:6)) { # loop for the intervals in legend
+  my_labels[i] = str_c(gdp_vec[i], " to ", gdp_vec[i + 1]) # create the intervals of the legend
+}
+
+simp_sf %>% 
+  mutate(
+    log_pc_usd = log10(per_capita_gdp_usd), # gen log per capita gdp
+    region_fac = factor(region, levels = c("Northern", "Western", "Southern", # these are the facets
+                                           "Central", "Eastern", "Northeastern",
+                                           "Arabian Sea", "Bay of Bengal")) 
+  ) %>%
+  filter(!state_ut %in% c("Andaman & Nicobar Islands", 
+                          "Lakshadweep")) %>% # take out the islands and small ut
+  tm_shape() + # graph only this subsample
+  tm_borders(lwd = 0.5, col = "white") +
+  tm_fill(col = 'log_pc_usd', title = '', palette = "viridis",
+          labels = my_labels) +
+  tm_facets(by = "region_fac", nrow = 2, free.coords = TRUE ) + # replace w FALSE and the entire map of india appears
+  tm_layout(
+    main.title = "Per Capita GDP by Region",
+    main.title.size = 1,
+    main.title.position = "center",
+    legend.outside.position = "right"
+  )
+# ERROR: the FALSE in free-coords only zooms out but doesnt show the rest of india in each facet probably bcs of colors or piping the map in a subset 
+
+
+# Proportional Symbols Maps ----
+  # much better for count data (e.g. pop instead of standardized data)
+
+pop_bubbles <- simp_sf %>% 
+  tm_shape() +
+  tm_polygons() +
+  tm_bubbles(col = "gold", size = "pop_2011", 
+             scale = 3, title.size = "") +
+  tm_text("abb", size = "pop_2011", root = 5, # what text appears within bubbles and depends on size/pop
+          legend.size.show = FALSE) +
+  tm_layout(
+    main.title = "Population (2011)",
+    main.title.position = c("center"),
+    main.title.size = 1,
+    legend.position = c("right", "bottom") 
+  )
+
+gdp_bubbles <- simp_sf %>% 
+  tm_shape() +
+  tm_polygons() +
+  tm_bubbles(col = "red", size = "nominal_gdp_usd", 
+             scale = 3, title.size = "") +
+  tm_text("abb", size = "nominal_gdp_usd", root = 5,
+          legend.size.show = FALSE) +
+  tm_layout(
+    main.title = "Nominal GDP (USD)",
+    main.title.position = c("center"),
+    main.title.size = 1,
+    legend.position = c("right", "bottom") 
+  )
+
+tmap_arrange(pop_bubbles, gdp_bubbles)
+
+
+
+# geom_sf in ggplot2 ----
+  # ggplot2 requires tidy data but sf package transforms spatial data into data.frames! -> ggplo2 visualizes sf objects
+
+# it also allows for overlapping objects into maps: add Kerala w geom_text_repel()
+  # but first we need to find the geographical center of Kerale to tag the label
+  # this can only be done in CRS projected objects as opposed to geographic CRS (bcs of espherical Earth)
+library(ggplot2)
+library(ggrepel)
+
+proj_sf <- simp_sf %>%  # basically transf. the geometry var (CRS) into 4 vars that are the coordinates
+  st_transform(crs = 24343) %>% # to transform the geo CRS into a projected CRS
+  mutate(
+    CENTROID = purrr::map(geometry, st_centroid),
+    COORDS = purrr::map(CENTROID, st_coordinates),
+    COORDS_X = purrr::map_dbl(COORDS, 1),
+    COORDS_Y = purrr::map_dbl(COORDS, 2)
+  )
+
+kerala <- proj_sf %>%  # get (every collum) just for kerala
+  filter(state_ut == "Kerala") 
+
+              install.packages("ggrepel") # HAD TO INSTALL THIS!
+                library(ggrepel)
+              
+proj_sf %>%
+  filter(!state_ut %in% c("Daman & Diu", "Dadra & Nagar Haveli")) %>% # take out some ut
+  ggplot() + # initiate ggplot object
+  geom_sf(aes(fill = sex_ratio), lwd = 0) +
+  geom_sf(fill = NA, color = "grey", lwd = 0.5) +
+  scale_fill_viridis_c("Sex Ratio", labels = scales::comma, option = "A") +
+  labs(
+    title = "Sex Ratio across Indian States",
+    caption = "Source: Wikipedia"
+  ) +
+  geom_text_repel( # add/overlap the other object (kerala) into the map 
+    data = kerala,
+    mapping = aes(x = COORDS_X, y = COORDS_Y, label = state_ut),
+    nudge_x = -0.5,
+    nudge_y = -1
+  ) +
+  scale_y_continuous(NULL) +
+  scale_x_continuous(NULL) +
+  theme(plot.title = element_text(hjust = 0.5)) +
+  # remove graticules
+  coord_sf(datum = NA) +
+  theme_void()
+
+
+
+# Dot Density Maps ----
+  # since we dont have district data the density of the dots is random within each state
+  # we depart from a tidy data format and gather() urban and rural population data. 
+  # Then we use the st_sample() function to draw sample points based on the respective urban and rural population data for each observation.
+
+# save geometry
+proj_geometry <- proj_sf %>% select(state_ut) # save the collum state to id each row of geometry wich is also saved by default 
+
+# gather data and rejoin geometry
+pop_gathered <- proj_sf %>% 
+  st_set_geometry(NULL) %>% 
+  select(state_ut, rural_pop, urban_pop) %>% 
+  gather(key = "pop", value = "count", -state_ut) %>% 
+  arrange(state_ut) %>% 
+  left_join(proj_geometry) %>% 
+  st_as_sf() # converts foreign object into a sf one
+
+# create a list of urban and rural populations
+pop_split <- pop_gathered %>% split(.$pop)
+
+# draw 1 dot per 1 lakh people
+generate_samples <- function(data) {
+  st_sample(data, size = round(data$count / 1e5))
+}
+
+# generate samples for each and combine
+points <- map(pop_split, generate_samples)
+points <- imap(points, ~st_sf(tibble(
+  pop = rep(.y, length(.x))),
+  geometry = .x))
+points <- do.call(rbind, points)
+
+# group points into multipoints
+points <- points %>% 
+  group_by(pop) %>% 
+  summarise()
+
+# plot with ggplot
+points %>% 
+  ggplot() +
+  geom_sf(data = simp_sf) +
+  geom_sf(aes(color = pop, fill = pop),
+          size = 0.1, alpha = 0.4) +
+  scale_fill_discrete("Population", labels = c("Rural", "Urban")) +
+  labs(
+    title = "Density of India's Urban and Rural Population (2011)",
+    caption = "1 dot = 1 lakh people"
+  ) +
+  theme(plot.title = element_text(hjust = 0.5)) +
+  coord_sf(datum = NA) +
+  theme_void() +
+  guides(color = FALSE)
+
+
+
+
+
+# ..........................................#
+# Partially Spatial Static Representations  #
+# ..........................................#
+        
+# Cartograms ----    
+                    install.packages("cartogram") # add to do it
+library(cartogram)
+
+ccart_gdp_sf <- cartogram_cont(proj_sf, "nominal_gdp_usd") # continuous cartogram
+
+gdp_ccart <- ccart_gdp_sf %>%
+  filter(!state_ut == "Andaman & Nicobar Islands") %>% 
+  tm_shape() +
+  tm_polygons("nominal_gdp_usd", title = "Nominal GDP (USD)", 
+              palette = "Greens") +
+  tm_layout(
+    main.title = "Area Distorted by Nominal GDP",
+    main.title.position = c("left"),
+    main.title.size = 1,
+    legend.position = c("right", "bottom")
+  )
+
+gdp_original <- proj_sf %>% 
+  filter(!state_ut == "Andaman & Nicobar Islands") %>% 
+  tm_shape() +
+  tm_polygons(col = "nominal_gdp_usd", title = "Nominal GDP (USD)", 
+              palette = "Greens") +
+  tm_layout(
+    main.title = "Nominal GDP",
+    main.title.position = c("left"),
+    main.title.size = 1,
+    legend.position = c("right", "bottom")
+  )
+
+tmap_arrange(gdp_original, gdp_ccart)
+
+
+# Cartograms can also be not continuous or Dorling(i.e. circles) (e.g.)
+  # The Dorling cartogram is essentially the proportional symbols map without the underlying map.
+
+ncart_gdp_sf <- cartogram_ncont(proj_sf, "nominal_gdp_usd")
+dorling_gdp_sf <- cartogram_dorling(proj_sf, "nominal_gdp_usd")
+
+gdp_ncart <- ncart_gdp_sf %>%
+  filter(!state_ut == "Andaman & Nicobar Islands") %>% 
+  tm_shape() +
+  tm_polygons("nominal_gdp_usd", title = "Nominal GDP (USD)", 
+              palette = "Greens") +
+  tm_layout(
+    main.title = "Non-Continuous Cartogram",
+    main.title.position = c("left"),
+    main.title.size = 1,
+    legend.position = c("right", "bottom")
+  )
+
+gdp_dorling <- dorling_gdp_sf %>%
+  filter(!state_ut == "Andaman & Nicobar Islands") %>% 
+  tm_shape() +
+  tm_polygons("nominal_gdp_usd", title = "Nominal GDP (USD)", 
+              palette = "Greens") +
+  tm_text("abb", size = 0.5) +
+  tm_layout(
+    main.title = "Dorling Cartogram",
+    main.title.position = c("left"),
+    main.title.size = 1,
+    legend.position = c("right", "bottom")
+  )
+
+tmap_arrange(gdp_ncart, gdp_dorling)
+
+
+
+# Hexbin Maps ----
+    #  geogrid is a new package under
+    # development that tries to generate automatic hexbin grids given any set of geospatial polygons.
+      
+    devtools::install_github("jbaileyh/geogrid") # didnt work, try manually later
+
+library(geogrid) # devtools::install_github("jbaileyh/geogrid")
+
+## test possible grids before selecting seed
+# par(mfrow = c(3, 3), mar = c(0, 0, 2, 0))
+# for (i in 1:9) {
+# new_cells <- calculate_grid(shape = proj_sf, 
+# grid_type = "hexagonal", seed = i)
+# plot(new_cells, main = paste("Seed", i, sep = " "))
+# }
+
+new_cells_hex <- calculate_grid(shape = proj_sf, 
+                                grid_type = "hexagonal", seed = 1)
+hex_result <- assign_polygons(proj_sf, new_cells_hex)
+
+# assign_polygons generates V1 V2 which are center coordinates of tiles
+ggplot(hex_result) +
+  geom_sf(aes(fill = per_capita_gdp_usd)) +
+  geom_text(aes(x = V1, y = V2, 
+                label = abb), size = 2, colour = "white") +
+  scale_fill_viridis_c("Per Capita GDP\n(USD$)", labels = scales::dollar) +
+  labs(
+    title = "Hexbin Map of Per Capita GDP",
+    caption = "Data Source: Wikipedia"
+  ) +
+  coord_sf(datum = NA) +
+  theme_void() +
+  guides(size = FALSE)
+
+
+
+
+
+
+
+
+
+# Geofaceted Plots ----
+    install.packages("geofacet")
+library(geofacet)
+
+simp_df <- simp_sf %>%
+  st_set_geometry(NULL) %>% 
+  select(state_ut, urban_pop, rural_pop) %>% 
+  gather(Type, pop_value, -state_ut) %>% 
+  mutate(Type = ifelse(Type == "urban_pop", "Urban", "Rural"))
+
+ggplot(simp_df,
+       aes(x = Type, y = pop_value / 1e6, fill = Type)) +
+  geom_col() +
+  facet_geo(~ state_ut, grid = mygrid, label = "code") + # where does mygrid come from? 
+  labs(
+    title = "Urban and Rural Populations Across States/UTs (2011)",
+    caption = "Data Source: Wikipedia",
+    x = "",
+    y = "Population (Millions)"
+  ) +
+  theme_bw() +
+  theme(axis.text.x = element_text(angle = 45, hjust = 1))
+
+# ERROR: where does mygrid come from?!?
+
+# main packages: tmap, ggplo2, cartogram, geogrid, geofacet
 
